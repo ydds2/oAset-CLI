@@ -479,3 +479,27 @@ async def test_help_first_screen_shows_daily_commands(workspace):
         assert "Daily commands" in text or "常用命令" in text
         assert "/login" in text or "/new" in text or "/sessions" in text
         assert "Ctrl+O" not in text and "F2" not in text
+
+
+async def test_welcome_greets_by_time_and_counts_sessions(workspace):
+    """The page has a pulse: a time-of-day greeting (one of five) and a
+    session ordinal. The greeting is bold and prefixes the title."""
+    from oaset.tui.widgets.chat import WelcomePanel
+
+    app = make_app(workspace)
+    async with app.run_test(size=(100, 34)) as pilot:
+        await pilot.pause(0.3)
+        text = str(app.chat.query(WelcomePanel).first().render())
+        greetings = ("早上好", "中午好", "下午好", "晚上好", "夜深了",
+                     "Good morning", "Good afternoon", "Good evening",
+                     "Late night")
+        assert any(g in text for g in greetings), "a greeting must render"
+        assert "次会话" in text or "session #" in text, "ordinal must render"
+
+
+def test_welcome_fun_pool_has_twelve_lines():
+    """Six personality lines felt thin; the pool is twelve now."""
+    from oaset.i18n import CATALOG
+
+    present = [k for k in CATALOG if k.startswith("welcome_fun_")]
+    assert len(present) == 12, f"fun pool is {len(present)}, want 12"

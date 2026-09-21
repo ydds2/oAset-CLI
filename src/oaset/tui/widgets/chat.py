@@ -589,6 +589,18 @@ class WelcomePanel(Static):
             top += list(brand.wordmark(colored, ramp).split("\n")) + [None]
 
         title = Text()
+        # a time-of-day greeting gives the page a pulse without noise: the
+        # user reads "晚上好" and knows the terminal noticed them
+        import datetime as _dtmod
+
+        hour = _dtmod.datetime.now().hour
+        greet_key = ("welcome_greet_late" if hour < 5 else
+                     "welcome_greet_morning" if hour < 11 else
+                     "welcome_greet_noon" if hour < 14 else
+                     "welcome_greet_afternoon" if hour < 18 else
+                     "welcome_greet_evening")
+        title.append(t(greet_key), style="bold")
+        title.append(" — ")
         title.append(f"oAset v{f['version']}", style="bold")
         title.append(f" — {t('welcome_tagline')}")
         base_top = [title, brand.rule(min(max(width - 4, 10), 60), colored, ramp), None,
@@ -596,7 +608,30 @@ class WelcomePanel(Static):
                     f"{t('welcome_dir')}: {f['cwd']}"]
 
         sid = str(f.get("session_id") or "")
-        session_row = [f"{t('welcome_session')}: {sid[-8:]}"] if sid else []
+        session_row: list = []
+        if sid:
+            # ordinal + streak: a small "you've been here" pulse, local data
+            try:
+                ordinal = len(self.app.store.list_sessions(
+                    cwd=str(self.app.cwd), limit=500)) or 1
+            except Exception:
+                ordinal = 1
+            row = f"{t('welcome_session')}: {sid[-8:]}"
+            bits = [t("welcome_session_ordinal", n=ordinal)]
+            try:
+                import datetime as _dtmod
+
+                rows30 = {d: a for d, a in self.app.store.usage_by_days(days=30)}
+                streak = 0
+                day = _dtmod.date.today()
+                while rows30.get(day.isoformat(), {}).get("total_tokens"):
+                    streak += 1
+                    day -= _dtmod.timedelta(days=1)
+                if streak >= 2:
+                    bits.append(t("welcome_streak", n=streak))
+            except Exception:
+                pass
+            session_row = [row + "  ·  " + " · ".join(bits)]
 
         # --- character: seven-day activity sparkline (local data only) ---
         spark_row: list = []
@@ -670,7 +705,7 @@ class WelcomePanel(Static):
             # one personality line per launch (stable across resizes)
             import random
 
-            self._fun_line = t(f"welcome_fun_{random.randint(1, 6)}")
+            self._fun_line = t(f"welcome_fun_{random.randint(1, 12)}")
         tail = [None, t("welcome_hint"), t("welcome_tips")]
         charms = [t("welcome_click_hint"), f"· {self._fun_line}"]
         if f["needs_key"]:
