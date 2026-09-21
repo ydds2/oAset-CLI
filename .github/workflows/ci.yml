@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Rapid pushes (an audit round lands in ten commits) used to run ten full
+# matrices to completion; superseded runs are cancelled instead.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # Only the repo we actually push to runs CI; older clones/mirrors of the
+    # same commits must not burn private-repo Actions minutes twice.
+    if: github.repository == 'ydds2/oAset-CLI'
+    strategy:
+      fail-fast: false
+      matrix:
+        # Two legs instead of four: both OSes and both Python versions are
+        # still covered; the duplicate cross-combinations cost minutes but
+        # find nothing. Windows bills at 2x — one leg only.
+        include:
+          - os: ubuntu-latest
+            python-version: "3.11"
+          - os: windows-latest
+            python-version: "3.12"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Lockfile is current (SUPPLY-01)
+        run: |
+          python -m pip install uv
+          python -m uv lock --check
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Lint (ruff gate)
+        run: python -m ruff check src/ tests/
+      - name: Tests with coverage gate
+        run: python -m pytest -q --tb=short --cov=oaset --cov-report=term --cov-fail-under=70
+      - name: Type check (whole repo, blocking)
+        run: python -m mypy src/oaset --ignore-missing-imports
+
+  package:
+    # build the wheel, install it into a clean env, import + CLI smoke
+    if: github.repository == 'ydds2/oAset-CLI'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --wheel
+      - name: Install wheel into clean venv and smoke
+        run: |
+          python -m venv .smokevenv
+          .smokevenv/bin/python -m pip install dist/*.whl
+          .smokevenv/bin/python -c "import oaset; print(oaset.__version__)"
+          .smokevenv/bin/oaset --version
+          .smokevenv/bin/oaset update doctor

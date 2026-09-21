@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="oAset logo">
+  <!-- The oAset "o" as the oMotion dial: a gradient ring with one quadrant
+       filling (◔ = in motion). Same Kimi-blue → ice-cyan ramp as themes.py. -->
+  <defs>
+    <linearGradient id="oaset-ramp" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3b5f9e"/>
+      <stop offset="0.5" stop-color="#5b9bd5"/>
+      <stop offset="1" stop-color="#a8e6ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="52" fill="#0d1117"/>
+  <circle cx="128" cy="128" r="70" fill="none" stroke="url(#oaset-ramp)"
+          stroke-width="14" opacity="0.55"/>
+  <path d="M128 58 A70 70 0 0 1 198 128 L128 128 Z" fill="url(#oaset-ramp)"/>
+  <circle cx="128" cy="128" r="16" fill="url(#oaset-ramp)"/>
+</svg>

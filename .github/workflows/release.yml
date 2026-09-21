@@ -1,0 +1,112 @@
+name: Release
+
+# Artifacts come from here only. A local pyinstaller run is for debugging; it is
+# never published, because the stale-artifact problem is exactly a local build
+# surviving next to newer sources. The packaged exe carries a fingerprint
+# (commit + content digest) written by scripts/stamp_build.py, and this workflow
+# refuses to publish anything that cannot state which build it is.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # the stamp records the commit
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]" pyinstaller
+
+      - name: Stamp the build fingerprint
+        run: python scripts/stamp_build.py --json
+
+      - name: Package (clean, from the stamped tree)
+        run: python -m PyInstaller --noconfirm --clean oaset.spec
+
+      - name: Verify the artifact identifies itself
+        shell: bash
+        run: |
+          set -euo pipefail
+          version_out=$(./dist/oaset.exe --version)
+          echo "$version_out"
+          fingerprint=$(python -c "
+          import re,sys
+          from pathlib import Path
+          text = Path('src/oaset/_build_info.py').read_text(encoding='utf-8')
+          print(re.search(r\"FINGERPRINT = '([^']+)'\", text).group(1))
+          ")
+          echo "expected fingerprint: $fingerprint"
+          echo "$version_out" | grep -q "release $fingerprint" \
+            || { echo "FAIL: artifact does not report its own fingerprint"; exit 1; }
+
+      - name: Smoke test (offline, no config)
+        shell: bash
+        run: |
+          set -euo pipefail
+          export OASET_HOME="$(mktemp -d)"
+          ./dist/oaset.exe --mock --print "release smoke" | tee smoke.txt
+          grep -q "\[mock\]" smoke.txt
+          # resources are bundled: run from an unrelated directory
+          cd "$(mktemp -d)" && "$GITHUB_WORKSPACE/dist/oaset.exe" --version >/dev/null
+
+      - name: Checksums
+        shell: bash
+        run: |
+          cd dist
+          sha256sum oaset.exe > oaset.exe.sha256
+          cat oaset.exe.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oaset-cli-windows-x64
+          path: |
+            dist/oaset.exe
+            dist/oaset.exe.sha256
+          if-no-files-found: error
+
+      - name: Record the fingerprint for the release notes
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          {
+            echo "Packaged from a clean checkout by GitHub Actions."
+            echo ""
+            echo "- tag: \`${GITHUB_REF_NAME}\`"
+            echo "- commit: \`${GITHUB_SHA:0:7}\`"
+            echo "- fingerprint: \`$(python -c "
+          import re
+          from pathlib import Path
+          text = Path('src/oaset/_build_info.py').read_text(encoding='utf-8')
+          print(re.search(r\"FINGERPRINT = '([^']+)'\", text).group(1))
+          ")\`"
+            echo "- verify: \`oaset.exe --version\` prints this fingerprint"
+            echo ""
+            echo "Do not run a locally built exe for release verification: a stale"
+            echo "artifact looks identical to a fresh one until it prints its stamp."
+          } > release-notes.md
+          cat release-notes.md
+
+      - name: Publish (tags only)
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            dist/oaset.exe dist/oaset.exe.sha256 \
+            --title "oAset CLI ${GITHUB_REF_NAME}" \
+            --notes-file release-notes.md

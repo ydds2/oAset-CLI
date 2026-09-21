@@ -1,0 +1,87 @@
+{"id": "read-basic", "category": "read", "prompt": "read data.txt",
+ "setup": {"files": {"data.txt": "the-answer-marker"}},
+ "turns": [{"tool": ["read_file", {"path": "data.txt"}]}, {"content": ["Answer: the-answer-marker"]}],
+ "expect": {"tools": ["read_file"], "contains": "the-answer-marker"}}
+{"id": "read-missing", "category": "read", "prompt": "read nope.txt",
+ "turns": [{"tool": ["read_file", {"path": "nope.txt"}]}, {"content": ["not found, told the user"]}],
+ "expect": {"tools": ["read_file"], "contains": "not found"}}
+{"id": "write-auto-gate", "category": "write", "prompt": "save a note", "gate": "auto",
+ "turns": [{"tool": ["write_file", {"path": "note.txt", "content": "saved-marker"}]}, {"content": ["saved"]}],
+ "expect": {"tools": ["write_file"], "contains": "saved"}}
+{"id": "write-denied-readonly", "category": "write", "prompt": "try to write", "gate": "readonly",
+ "turns": [{"tool": ["write_file", {"path": "note.txt", "content": "x"}]}, {"content": ["denied, reported"]}],
+ "expect": {"tools": ["write_file"], "contains": "denied"}}
+{"id": "edit-exact", "category": "write", "prompt": "fix the value", "gate": "auto",
+ "setup": {"files": {"v.py": "value = 1\n"}},
+ "turns": [{"tool": ["edit_file", {"path": "v.py", "old_text": "value = 1", "new_text": "value = 2"}]},
+           {"tool": ["run_shell", {"command": "echo ok"}]},
+           {"content": ["edited"]}],
+ "expect": {"tools": ["edit_file", "run_shell"], "contains": "edited"}}
+{"id": "edit-fuzzy-whitespace", "category": "write", "prompt": "fix despite trailing spaces", "gate": "auto",
+ "setup": {"files": {"w.py": "value = 1   \nprint(value)\n"}},
+ "turns": [{"tool": ["edit_file", {"path": "w.py", "old_text": "value = 1\nprint(value)", "new_text": "value = 9\nprint(value)"}]},
+           {"tool": ["run_shell", {"command": "echo ok"}]},
+           {"content": ["fuzzy applied"]}],
+ "expect": {"tools": ["edit_file", "run_shell"], "tool_output_contains": "fuzzy match"}}
+{"id": "shell-echo", "category": "shell", "prompt": "echo hello", "gate": "auto",
+ "turns": [{"tool": ["run_shell", {"command": "echo eval-marker"}]}, {"content": ["echoed"]}],
+ "expect": {"tools": ["run_shell"], "tool_output_contains": "eval-marker"}}
+{"id": "shell-failure", "category": "shell", "prompt": "run a missing command", "gate": "auto",
+ "turns": [{"tool": ["run_shell", {"command": "oaset-definitely-not-a-command-xyz"}]}, {"content": ["failed, reported honestly"]}],
+ "expect": {"tools": ["run_shell"], "contains": "reported honestly"}}
+{"id": "glob-basic", "category": "read", "prompt": "find py files",
+ "setup": {"files": {"src/a.py": "x = 1", "src/b.txt": "y"}},
+ "turns": [{"tool": ["glob", {"pattern": "**/*.py"}]}, {"content": ["found a.py"]}],
+ "expect": {"tools": ["glob"], "contains": "found"}}
+{"id": "grep-basic", "category": "read", "prompt": "find the marker",
+ "setup": {"files": {"code/main.py": "GREP_MARKER = 1\n"}},
+ "turns": [{"tool": ["grep", {"pattern": "GREP_MARKER"}]}, {"content": ["located"]}],
+ "expect": {"tools": ["grep"], "contains": "located"}}
+{"id": "list-dir", "category": "read", "prompt": "list the tree",
+ "setup": {"files": {"pkg/__init__.py": ""}},
+ "turns": [{"tool": ["list_dir", {}]}, {"content": ["listed"]}],
+ "expect": {"tools": ["list_dir"], "contains": "listed"}}
+{"id": "todo-plan", "category": "planning", "prompt": "plan the work",
+ "turns": [{"tool": ["todo_write", {"todos": [{"content": "step one", "status": "in_progress"}, {"content": "step two", "status": "pending"}]}]},
+           {"content": ["planned 2 steps"]}],
+ "expect": {"tools": ["todo_write"], "contains": "planned"}}
+{"id": "long-output-truncated", "category": "read", "prompt": "read the huge log", "config": {"tool_output_limit": 400},
+ "setup": {"files": {"big.log": "line\n"}},
+ "turns": [{"tool": ["read_file", {"path": "big.log"}]}, {"content": ["truncated but complete marker seen"]}],
+ "expect": {"tools": ["read_file"], "contains": "truncated but complete"}}
+{"id": "search-blocked-local-only", "category": "network", "prompt": "search the web", "config": {"network_mode": "local_only"},
+ "turns": [{"tool": ["web_search", {"query": "anything"}]}, {"content": ["explained the policy"]}],
+ "expect": {"tools": ["web_search"], "is_error": true}}
+{"id": "search-no-results-honest", "category": "network", "prompt": "search gibberish",
+ "turns": [{"tool": ["web_search", {"query": "qqzzxxww nohit"}]}, {"content": ["no results, said so"]}],
+ "expect": {"tools": ["web_search"], "contains": "no results, said so"}}
+{"id": "tool-budget-exhausted", "category": "guard", "prompt": "keep calling tools", "gate": "auto",
+ "config": {"max_tool_calls": 1},
+ "turns": [{"tool": ["list_dir", {}]}, {"tool": ["list_dir", {}]}, {"content": ["stopped within budget"]}],
+ "expect": {"tools": ["list_dir", "list_dir"], "contains": "within budget"}}
+{"id": "cancel-wire-valid", "category": "guard", "prompt": "interrupt me",
+ "cancel": true,
+ "turns": [{"content": ["partial answer before cancel"]}],
+ "expect": {"contains": "partial answer"}}
+{"id": "fallback-switch", "category": "provider", "prompt": "keep going when the provider dies",
+ "provider": "dead-primary",
+ "turns": [{"content": ["fallback answered"]}],
+ "expect": {"contains": "fallback answered", "notice_fallback": true}}
+{"id": "session-persist", "category": "session", "prompt": "remember this across resume",
+ "turns": [{"content": ["PERSIST-MARKER"]}],
+ "expect": {"contains": "PERSIST-MARKER", "persisted_messages": 2}}
+{"id": "mid-stream-injection", "category": "session", "prompt": "answer, then use my follow-up",
+ "injections": ["[mid-stream] also mention INJECT-MARKER"],
+ "turns": [{"tool": ["list_dir", {}]}, {"content": ["second answer with INJECT-MARKER"]}],
+ "expect": {"contains": "INJECT-MARKER", "tools": ["list_dir"]}}
+{"id": "verify-gate-blocks-bare-edit", "category": "guard", "prompt": "fix the value and stop", "gate": "auto",
+ "setup": {"files": {"v.py": "value = 1\n"}},
+ "turns": [{"tool": ["edit_file", {"path": "v.py", "old_text": "value = 1", "new_text": "value = 2"}]},
+           {"content": ["edited without tests"]}],
+ "expect": {"tools": ["edit_file"], "contains": "verify-gate"}}
+{"id": "verify-gate-accepts-shell-after-edit", "category": "guard", "prompt": "fix then prove it", "gate": "auto",
+ "setup": {"files": {"v.py": "value = 1\n"}},
+ "turns": [{"tool": ["edit_file", {"path": "v.py", "old_text": "value = 1", "new_text": "value = 2"}]},
+           {"tool": ["run_shell", {"command": "echo verified-marker"}]},
+           {"content": ["proved"]}],
+ "expect": {"tools": ["edit_file", "run_shell"], "contains": "proved", "tool_output_contains": "verified-marker"}}
