@@ -579,16 +579,23 @@ class WelcomePanel(Static):
             viewport = 0
         if viewport <= 0:
             viewport = max(int(self.size.height) - 6, 16)
-        # CLAMP against the screen: before layout settles (first frame on a
-        # cold/slow FS — the CI runner reproduces it) the chat widget reports
-        # the FULL terminal height, the budget over-admits, and the panel
-        # scrolls its own branding off the top. input(3)+status(1)+spare(2).
+        # CLAMP against the SCREEN: before layout settles (the CI runner
+        # reproduces it) BOTH chat.size and app.size misreport — CI measured
+        # app.size.height=42 on a 30-row run_test, the budget over-admitted,
+        # and the panel scrolled its own branding off. screen.size is the
+        # ground truth here; app.size is only the fallback.
+        bound = 0
         try:
-            chrome_bound = int(self.app.size.height) - 6
-            if chrome_bound > 0:
-                viewport = min(viewport, chrome_bound)
+            bound = int(self.app.screen.size.height)
         except Exception:
-            pass
+            bound = 0
+        if bound <= 0:
+            try:
+                bound = int(self.app.size.height)
+            except Exception:
+                bound = 0
+        if bound > 0:
+            viewport = min(viewport, max(bound - 6, 12))
         budget = max(viewport - 5, 8)  # body rows: frame+padding take 4,
         # one spare row so the box never scrolls its own top border off
 
@@ -782,7 +789,19 @@ class WelcomePanel(Static):
         # Textual box-sizing is border-box: height must include the frame
         # (2 rows) and the 1-cell vertical padding (2 rows) or the border
         # eats the last content rows.
-        self.styles.height = body_rows + 4
+        target_height = body_rows + 4
+        # ONLY write when it actually changes: a style write schedules a
+        # resize, on_resize rebuilds, and when two size measurements
+        # disagree (CI-first-frame misreports) an unconditional write
+        # oscillates forever — the historical "full gate hang": a rebuild
+        # loop burning CPU and memory until the job died
+        try:
+            current = self.styles.height
+            if current is None or int(current.value) != target_height:
+                self.styles.height = target_height
+        except Exception:
+            self.styles.height = target_height
+        self._last_build_size = (int(self.size.width), int(self.size.height))
         self.update(page)
 
     async def on_click(self, event) -> None:
@@ -844,6 +863,11 @@ class WelcomePanel(Static):
         self._build()
 
     def on_resize(self) -> None:
+        # skip the rebuild when nothing about the geometry changed: the
+        # set-height→resize→rebuild chain is fine once, a loop is not
+        size = (int(self.size.width), int(self.size.height))
+        if size == getattr(self, "_last_build_size", None):
+            return
         self._build()
 
     def copy_text(self) -> str:

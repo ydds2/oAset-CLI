@@ -183,3 +183,33 @@ async def test_welcome_never_scrolls_its_branding_off(workspace, monkeypatch):
             "it will scroll its own branding off")
         screen = screen_text(app)
         assert "oAset" in screen, "branding must stay ON the first screen"
+
+
+async def test_welcome_build_does_not_loop(workspace):
+    """The set-height→resize→rebuild chain must not oscillate: an
+    unconditional height write with disagreeing size measurements was the
+    full-gate 'hang' (rebuild loop burning CPU/memory). Count builds."""
+    from oaset.config import default_config
+    from oaset.providers import MockProvider, MockTurn
+    from oaset.tui.app import OasetApp
+    from oaset.tui.widgets.chat import WelcomePanel
+
+    app = OasetApp(cfg=default_config(), cwd=workspace,
+                   provider=MockProvider([MockTurn(content_chunks=["ok"])]),
+                   model_id="mock/mock-echo")
+    async with app.run_test(size=(100, 30)) as pilot:
+        await pilot.pause(0.2)
+        panel = app.chat.query(WelcomePanel).first()
+        builds = {"n": 0}
+        real_build = panel._build
+
+        def counting_build() -> None:
+            builds["n"] += 1
+            if builds["n"] > 10:
+                raise AssertionError("welcome rebuild loop")
+            real_build()
+
+        panel._build = counting_build  # type: ignore[method-assign]
+        for _ in range(40):
+            await pilot.pause(0.05)
+        assert builds["n"] <= 2, f"{builds['n']} rebuilds in 2s: loop"
