@@ -159,3 +159,27 @@ def test_boot_held_messages_render_once():
             assert count == 1, f"held message rendered {count} times"
     import asyncio
     asyncio.run(run())
+
+
+async def test_welcome_never_scrolls_its_branding_off(workspace, monkeypatch):
+    """CI repro: with truecolor active (wordmark admitted) the panel used
+    to exceed the chat viewport and scroll "oAset" off the top on a 30-row
+    screen. The budget now clamps to screen height minus chrome."""
+    from oaset.config import default_config
+    from oaset.providers import MockProvider, MockTurn
+    from oaset.tui import brand as brand_mod
+    from oaset.tui.app import OasetApp
+    from oaset.tui.widgets.chat import WelcomePanel
+
+    monkeypatch.setattr(brand_mod, "truecolor_supported", lambda: True)
+    app = OasetApp(cfg=default_config(), cwd=workspace,
+                   provider=MockProvider([MockTurn(content_chunks=["ok"])]),
+                   model_id="mock/mock-echo")
+    async with app.run_test(size=(110, 30)) as pilot:
+        await pilot.pause(0.2)
+        panel = app.chat.query(WelcomePanel).first()
+        assert panel.region.height <= 30 - 5, (
+            f"welcome panel is {panel.region.height} rows on a 30-row screen: "
+            "it will scroll its own branding off")
+        screen = screen_text(app)
+        assert "oAset" in screen, "branding must stay ON the first screen"

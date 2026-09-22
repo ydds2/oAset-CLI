@@ -85,15 +85,22 @@ async def test_shell_echo(tmp_path):
     assert "[exit 0]" in res.output and "hello-shell" in res.output
 
 
-async def test_shell_sandbox_job_runs(tmp_path):
+async def test_shell_sandbox_job_runs(tmp_path, host_shell_unavailable_reason,
+                                       restricted_spawn_unavailable_reason):
     """sandbox=True: job object assigned, command still executes (Windows)."""
+    if host_shell_unavailable_reason:
+        pytest.skip(host_shell_unavailable_reason)
+    if restricted_spawn_unavailable_reason:
+        pytest.skip(restricted_spawn_unavailable_reason)
     ctx = ToolContext(cwd=tmp_path, mode="auto", output_limit=300)
     ctx.session_state["shell_config"] = {"backend": "local", "sandbox_default": True, "sandbox_memory_mb": 512}
     res = await RunShellTool().run({"command": "echo sandbox-live", "sandbox": True}, ctx)
     assert not res.is_error and "sandbox-live" in res.output
 
 
-async def test_shell_timeout_kills(tmp_path):
+async def test_shell_timeout_kills(tmp_path, host_shell_unavailable_reason):
+    if host_shell_unavailable_reason:
+        pytest.skip(host_shell_unavailable_reason)
     ctx = make_ctx(tmp_path)
     res = await RunShellTool().run({"command": "sleep 5", "timeout": 1}, ctx)
     assert "[exit -1]" in res.output and "timeout" in res.output

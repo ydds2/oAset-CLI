@@ -685,12 +685,13 @@ def test_cron_multifire_does_not_crash_and_fires_once_per_slot(isolated_home):
     from oaset import cron as cronmod
 
     job = cronmod.add_job("tick", "*/5 * * * *", "work")
-    # last fire: 10:05 slot, aware UTC written by now_iso
-    job.last_run = (_dt.datetime.now(_dt.timezone.utc)
-                    .replace(hour=2, minute=5, second=0, microsecond=0)).isoformat()
-    cronmod.save_jobs([job])
     local = _dt.datetime.now().replace(hour=10, minute=5, second=0,
                                        microsecond=0)
+    # last fire = the UTC stamp of THAT LOCAL slot: hardcoding 02:05Z only
+    # equals 10:05 local on UTC+8 machines — under CI's UTC clock the slot
+    # comparison saw (2,5) vs (10,5) and fired again (real CI failure)
+    job.last_run = local.astimezone(_dt.timezone.utc).isoformat()
+    cronmod.save_jobs([job])
     assert cronmod.is_due(job, local) is False, "same slot: not due again"
     assert cronmod.is_due(job, local.replace(minute=10)) is True, "next slot: due"
 

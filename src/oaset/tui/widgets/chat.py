@@ -579,6 +579,16 @@ class WelcomePanel(Static):
             viewport = 0
         if viewport <= 0:
             viewport = max(int(self.size.height) - 6, 16)
+        # CLAMP against the screen: before layout settles (first frame on a
+        # cold/slow FS — the CI runner reproduces it) the chat widget reports
+        # the FULL terminal height, the budget over-admits, and the panel
+        # scrolls its own branding off the top. input(3)+status(1)+spare(2).
+        try:
+            chrome_bound = int(self.app.size.height) - 6
+            if chrome_bound > 0:
+                viewport = min(viewport, chrome_bound)
+        except Exception:
+            pass
         budget = max(viewport - 5, 8)  # body rows: frame+padding take 4,
         # one spare row so the box never scrolls its own top border off
 

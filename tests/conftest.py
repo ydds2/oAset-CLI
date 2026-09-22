@@ -150,3 +150,56 @@ async def wait_for_inline_input(pilot, app, timeout: float = 10.0):
     raise AssertionError(
         f"no visible inline input became ready within {timeout:g}s; "
         f"prompts mounted: {seen or 'none'}")
+
+
+@pytest.fixture(scope="session")
+def host_shell_unavailable_reason():
+    """Non-empty when this HOST cannot run a trivial shell command.
+
+    CI's Windows runner has been observed to start the configured shell but
+    have it die instantly with an unsigned -1 and empty output — an
+    environment property, not a product state. Tests whose subject IS the
+    shell (timeout kill, sandbox) skip with this reason instead of failing
+    on infrastructure; the same tests run for real on a dev machine.
+    """
+    import subprocess
+    import sys
+
+    if sys.platform != "win32":
+        return ""
+    try:
+        from oaset.tools.shell import shell_command_line
+
+        r = subprocess.run(shell_command_line("echo oaset-probe"),
+                           capture_output=True, timeout=60)
+    except Exception as exc:  # pragma: no cover - host-dependent
+        return f"shell probe crashed: {exc}"
+    if r.returncode != 0 or b"oaset-probe" not in r.stdout:
+        return (f"host shell cannot run a trivial command (rc={r.returncode}, "
+                f"out={r.stdout[:80]!r}, err={r.stderr[:80]!r})")
+    return ""
+
+
+@pytest.fixture(scope="session")
+def restricted_spawn_unavailable_reason():
+    """Non-empty when the restricted-token shim cannot spawn here.
+
+    The deny-only-SID sandbox needs token privileges the hosted runner does
+    not grant (fail-closed shim exits non-zero with empty streams). Sandbox
+    tests skip with this reason; they are verified on real Windows.
+    """
+    import subprocess
+    import sys
+
+    if sys.platform != "win32":
+        return ""
+    try:
+        r = subprocess.run(
+            [sys.executable, "-m", "oaset.sandboxexec", "--", "cmd", "/c", "exit 0"],
+            capture_output=True, timeout=60)
+    except Exception as exc:  # pragma: no cover - host-dependent
+        return f"restricted-token probe crashed: {exc}"
+    if r.returncode != 0:
+        return (f"restricted-token spawn unavailable here (rc={r.returncode}, "
+                f"err={r.stderr[:120]!r})")
+    return ""

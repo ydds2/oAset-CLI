@@ -21,6 +21,15 @@ from oaset.tools.shell import RunShellTool
 pytestmark = pytest.mark.skipif(sys.platform != "win32", reason="Windows Job Object semantics")
 
 
+@pytest.fixture(autouse=True)
+def _require_restricted_spawn(request):
+    """Hosted runners cannot build restricted tokens; skip with the probe's
+    reason instead of failing on infrastructure (verified on real Windows)."""
+    reason = request.getfixturevalue("restricted_spawn_unavailable_reason")
+    if reason:
+        pytest.skip(reason)
+
+
 def _ctx(tmp_path: Path, memory_mb: int = 2048) -> ToolContext:
     ctx = ToolContext(cwd=tmp_path, mode="auto", output_limit=100_000)
     ctx.session_state["shell_config"] = {
