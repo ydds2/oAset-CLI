@@ -596,6 +596,11 @@ class WelcomePanel(Static):
                 bound = 0
         if bound > 0:
             viewport = min(viewport, max(bound - 6, 12))
+        fit = getattr(self, "_fit_budget", 0)
+        if fit:
+            # measured shortfall from the settle pass: the only signal the
+            # CI geometry actually honors
+            viewport = min(viewport, int(fit))
         budget = max(viewport - 5, 8)  # body rows: frame+padding take 4,
         # one spare row so the box never scrolls its own top border off
 
@@ -862,14 +867,33 @@ class WelcomePanel(Static):
     def on_mount(self) -> None:
         self._build()
         # second pass AFTER layout settles: during on_mount the screen
-        # geometry is not final (CI: screen.size unavailable/measured larger
-        # than the eventual 30 rows), so the budget was computed from the
-        # app-level fallback and the panel came out 36 rows on a 30-row
-        # screen. The height-write dedup keeps this second pass loop-free.
-        self.call_after_refresh(self._rebuild_settled)
+        # geometry is not final on every host (the CI runner reports the
+        # real console 42 rows while run_test asked for 30, and the numbers
+        # converge LATER than call_after_refresh). No size property can be
+        # trusted at build time, so the settle pass MEASURES: if the panel
+        # as rendered is taller than the chat area actually is, rebuild once
+        # with the measured budget. The height-write dedup keeps it
+        # loop-free, and _fit_budget makes the correction idempotent.
+        self.call_after_refresh(self._settle_pass)
+        # one delayed re-check: the CI runner's geometry converges later
+        # than call_after_refresh; the pass is idempotent (it only acts on
+        # a measured overflow), so a second look is free
+        self.set_timer(0.3, self._settle_pass)
 
-    def _rebuild_settled(self) -> None:
+    def _settle_pass(self) -> None:
         self._geometry_settled = True
+        try:
+            chat_h = int(self.app.chat.size.height)
+        except Exception:
+            chat_h = 0
+        if chat_h > 0 and self.region.height > chat_h \
+                and getattr(self, "_fit_budget", 0) != chat_h:
+            # measured overflow: this is the ONLY trustworthy signal
+            self._fit_budget = chat_h
+            self._build()
+            return
+        # sizes look consistent; still re-run once with the settled
+        # properties so the first-pass fallback bound gets corrected
         self._build()
 
     def on_resize(self) -> None:
