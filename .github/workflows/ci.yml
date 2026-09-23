@@ -44,7 +44,9 @@ jobs:
       - name: Lint (ruff gate)
         run: python -m ruff check src/ tests/
       - name: Tests with coverage gate
-        run: python -m pytest -q --tb=short --cov=oaset --cov-report=term --cov-fail-under=70
+        # --timeout: a hanging test NAMES ITSELF instead of burning the job
+        # to the 60-minute kill (the ubuntu leg did exactly that twice)
+        run: python -m pytest -q --tb=short --timeout=180 --timeout-method=thread --cov=oaset --cov-report=term --cov-fail-under=70
       - name: Type check (whole repo, blocking)
         run: python -m mypy src/oaset --ignore-missing-imports
 

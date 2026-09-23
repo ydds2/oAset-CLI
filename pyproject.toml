@@ -36,7 +36,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "pytest-asyncio>=0.23", "pytest-cov>=5", "ruff>=0.5",
-       "mypy>=1.10", "build>=1.2"]  # build: the wheel-packaging gate needs it
+       "mypy>=1.10", "build>=1.2", "pytest-timeout>=2.3"]
+# build: the wheel-packaging gate needs it; pytest-timeout: names the test
+# that hangs instead of letting a CI job burn to its 60-minute kill
 
 [project.urls]
 Homepage = "https://github.com/ydds2/oAset-CLI"
