@@ -187,6 +187,7 @@ async def test_welcome_never_scrolls_its_branding_off(workspace, monkeypatch):
         # the invariant is "fits the screen it is actually in": the CI
         # runner's console is larger than run_test's requested 30 rows, so
         # compare against the REAL screen height, not a hardcoded one
+        await pilot.pause(0.3)  # let the settled pass run
         real_h = int(app.screen.size.height)
         assert panel.region.height <= real_h - 4, (
             f"welcome panel is {panel.region.height} rows on a {real_h}-row "
@@ -220,4 +221,5 @@ async def test_welcome_build_does_not_loop(workspace):
         panel._build = counting_build  # type: ignore[method-assign]
         for _ in range(40):
             await pilot.pause(0.05)
-        assert builds["n"] <= 2, f"{builds['n']} rebuilds in 2s: loop"
+        # one settled pass is expected; a loop is not
+        assert builds["n"] <= 3, f"{builds['n']} rebuilds in 2s: loop"

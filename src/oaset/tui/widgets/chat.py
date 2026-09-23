@@ -861,12 +861,25 @@ class WelcomePanel(Static):
 
     def on_mount(self) -> None:
         self._build()
+        # second pass AFTER layout settles: during on_mount the screen
+        # geometry is not final (CI: screen.size unavailable/measured larger
+        # than the eventual 30 rows), so the budget was computed from the
+        # app-level fallback and the panel came out 36 rows on a 30-row
+        # screen. The height-write dedup keeps this second pass loop-free.
+        self.call_after_refresh(self._rebuild_settled)
+
+    def _rebuild_settled(self) -> None:
+        self._geometry_settled = True
+        self._build()
 
     def on_resize(self) -> None:
         # skip the rebuild when nothing about the geometry changed: the
-        # set-height→resize→rebuild chain is fine once, a loop is not
+        # set-height→resize→rebuild chain is fine once, a loop is not.
+        # Until the settled pass has run, resizes still rebuild (they are
+        # the only chance to see the real size during early layout).
         size = (int(self.size.width), int(self.size.height))
-        if size == getattr(self, "_last_build_size", None):
+        if getattr(self, "_geometry_settled", False) and \
+                size == getattr(self, "_last_build_size", None):
             return
         self._build()
 
