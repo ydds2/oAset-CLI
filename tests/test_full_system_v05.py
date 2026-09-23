@@ -4,6 +4,7 @@ adapter (full agent loop), i18n framework, Modal/Daytona templates."""
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -99,11 +100,18 @@ def test_discord_transport_roundtrip(workspace):
                 await asyncio.sleep(0.05)
         finally:
             task.cancel()
-            with pytest.raises(asyncio.CancelledError):
-                await task
+            # BOUNDED: on a slow CI disk the turn can still be persisting
+            # when the cancel lands; an unbounded await turned a slow append
+            # into a 180s timeout that killed the whole job (CI repro)
+            with contextlib.suppress(asyncio.CancelledError, TimeoutError):
+                await asyncio.wait_for(task, timeout=15)
+            if not task.done():
+                task.cancel()
             ws_server.close()
-            await ws_server.wait_closed()
-            await transport.close()
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(ws_server.wait_closed(), timeout=15)
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(transport.close(), timeout=15)
 
     asyncio.run(main())
     rest_server.shutdown()
